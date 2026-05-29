@@ -1,0 +1,27 @@
+{
+  "name": "liljr-2-0-empire",
+  "version": "4.0.0",
+  "description": "LIL.JR 2.0 Empire Command Center — Bulletproof Canadian Edition",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test-suite.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.6",
+    "dotenv": "^16.3.1",
+    "express": "^4.22.2",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.1.1",
+    "pg": "^8.11.3",
+    "qrcode": "^1.5.3",
+    "resend": "^2.1.0",
+    "uuid": "^9.0.1",
+    "ws": "^8.21.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

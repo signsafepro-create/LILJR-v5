@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LIL.JR 2.0 — Empire Command Center</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #0a0a0a;
+    color: #fff;
+    min-height: 100vh;
+}
+.header {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    padding: 20px 30px;
+    border-bottom: 3px solid #ff6b00;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.header h1 {
+    font-size: 28px;
+    color: #ff6b00;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+.header .status {
+    display: flex;
+    gap: 15px;
+    font-size: 12px;
+}
+.status-badge {
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-weight: bold;
+}
+.status-green { background: #00c853; color: #000; }
+.status-yellow { background: #ffd600; color: #000; }
+.status-red { background: #ff1744; color: #fff; }
+
+.nav {
+    display: flex;
+    gap: 5px;
+    padding: 15px 30px;
+    background: #111;
+    border-bottom: 1px solid #222;
+    overflow-x: auto;
+}
+.nav button {
+    padding: 10px 20px;
+    background: #1a1a2e;
+    color: #fff;
+    border: 1px solid #333;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    transition: all 0.3s;
+    white-space: nowrap;
+}
+.nav button:hover, .nav button.active {
+    background: #ff6b00;
+    border-color: #ff6b00;
+    color: #000;
+}
+
+.container {
+    padding: 30px;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.section {
+    display: none;
+    animation: fadeIn 0.3s;
+}
+.section.active { display: block; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+.card {
+    background: linear-gradient(135deg, #1a1a2e 0%, #0f0f23 100%);
+    border: 1px solid #333;
+    border-radius: 12px;
+    padding: 25px;
+    margin-bottom: 20px;
+}
+.card h2 {
+    color: #ff6b00;
+    font-size: 20px;
+    margin-bottom: 15px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+.card h3 {
+    color: #ffd600;
+    font-size: 16px;
+    margin: 15px 0 10px;
+}
+
+input, textarea, select {
+    width: 100%;
+    padding: 12px 15px;
+    background: #0a0a0a;
+    border: 1px solid #444;
+    border-radius: 8px;
+    color: #fff;
+    font-size: 14px;
+    margin-bottom: 12px;
+    font-family: inherit;
+}
+input:focus, textarea:focus, select:focus {
+    outline: none;
+    border-color: #ff6b00;
+}
+
+.btn {
+    padding: 12px 25px;
+    background: linear-gradient(135deg, #ff6b00 0%, #ff8f00 100%);
+    color: #000;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    transition: transform 0.2s;
+}
+.btn:hover { transform: scale(1.05); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+.btn-secondary {
+    background: linear-gradient(135deg, #333 0%, #555 100%);
+    color: #fff;
+}
+
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; }
+@media (max-width: 900px) { .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; } }
+
+.ai-card {
+    background: #111;
+    border: 1px solid #333;
+    border-radius: 10px;
+    padding: 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+.ai-card:hover {
+    border-color: #ff6b00;
+    transform: translateY(-3px);
+    box-shadow: 0 5px 20px rgba(255,107,0,0.2);
+}
+.ai-card .icon {
+    font-size: 36px;
+    margin-bottom: 10px;
+}
+.ai-card h4 {
+    color: #ff6b00;
+    font-size: 14px;
+    text-transform: uppercase;
+}
+.ai-card p {
+    font-size: 12px;
+    color: #888;
+    margin-top: 5px;
+}
+
+.result-box {
+    background: #0a0a0a;
+    border: 1px solid #444;
+    border-radius: 8px;
+    padding: 15px;
+    margin-top: 15px;
+    min-height: 100px;
+    white-space: pre-wrap;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    color: #00c853;
+    max-height: 400px;
+    overflow-y: auto;
+}
+.result-box.error { color: #ff1744; border-color: #ff1744; }
+.result-box.loading { color: #ffd600; }
+
+.login-form {
+    max-width: 400px;
+    margin: 50px auto;
+}
+.login-form h2 { text-align: center; margin-bottom: 30px; }
+.login-form .toggle {
+    text-align: center;
+    margin-top: 15px;
+    color: #888;
+    cursor: pointer;
+}
+.login-form .toggle span { color: #ff6b00; text-decoration: underline; }
+
+.hidden { display: none !important; }
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-bottom: 20px;
+}
+.stat-box {
+    background: #111;
+    border: 1px solid #333;
+    border-radius: 10px;
+    padding: 20px;
+    text-align: center;
+}
+.stat-box .number {
+    font-size: 32px;
+    font-weight: bold;
+    color: #ff6b00;
+}
+.stat-box .label {
+    font-size: 12px;
+    color: #888;
+    text-transform: uppercase;
+    margin-top: 5px;
+}
+
+.pricing-link {
+    display: inline-block;
+    padding: 15px 30px;
+    background: linear-gradient(135deg, #ff6b00 0%, #ff8f00 100%);
+    color: #000;
+    text-decoration: none;
+    border-radius: 10px;
+    font-weight: bold;
+    font-size: 16px;
+    margin-top: 20px;
+}
+
+#toast {
+    position: fixed;
+    bottom: 30px;
+    right: 30px;
+    padding: 15px 25px;
+    background: #00c853;
+    color: #000;
+    border-radius: 8px;
+    font-weight: bold;
+    display: none;
+    z-index: 1000;
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+    <h1>🔥 LIL.JR 2.0 — Empire Command Center</h1>
+    <div class="status">
+        <span class="status-badge status-green" id="serverStatus">SERVER LIVE</span>
+        <span class="status-badge status-yellow" id="authStatus">NOT LOGGED IN</span>
+    </div>
+</div>
+
+<div class="nav">
+    <button class="active" onclick="showSection('dashboard')">Dashboard</button>
+    <button onclick="showSection('auth')" id="authBtn">Login</button>
+    <button onclick="showSection('build')">Make It Real</button>
+    <button onclick="showSection('aisuite')">AI Suite</button>
+    <button onclick="showSection('jobs')">Jobs</button>
+    <button onclick="showSection('email')">Email</button>
+    <button onclick="window.open('/pricing.html','_blank')">Pricing</button>
+</div>
+
+<div id="toast">Action completed</div>
+
+<div class="container">
+
+<!-- DASHBOARD -->
+<div class="section active" id="dashboard">
+    <div class="stats-grid">
+        <div class="stat-box">
+            <div class="number" id="statBuilds">0</div>
+            <div class="label">Websites Built</div>
+        </div>
+        <div class="stat-box">
+            <div class="number" id="statJobs">0</div>
+            <div class="label">Active Jobs</div>
+        </div>
+        <div class="stat-box">
+            <div class="number" id="statAI">0</div>
+            <div class="label">AI Generations</div>
+        </div>
+        <div class="stat-box">
+            <div class="number" id="statTests">9/10</div>
+            <div class="label">Test Score</div>
+        </div>
+    </div>
+    <div class="card">
+        <h2>🚀 Quick Actions</h2>
+        <div class="grid-3">
+            <button class="btn" onclick="showSection('build')">🏗️ Build Website</button>
+            <button class="btn" onclick="showSection('aisuite')">🤖 AI Suite</button>
+            <button class="btn btn-secondary" onclick="runHealthCheck()">💓 Health Check</button>
+        </div>
+        <div class="result-box" id="healthResult" style="margin-top:15px;display:none;"></div>
+    </div>
+    <div class="card">
+        <h2>📊 Server Status</h2>
+        <p><strong>Port:</strong> 8081</p>
+        <p><strong>URL:</strong> <a href="http://localhost:8081" style="color:#ff6b00;">http://localhost:8081</a></p>
+        <p><strong>Groq AI:</strong> <span style="color:#00c853;">KEY PRESENT ✅</span></p>
+        <p><strong>Email:</strong> <span style="color:#ffd600;">FALLBACK MODE ⚠️</span> (Resend domain not verified)</p>
+        <p><strong>JWT:</strong> <span style="color:#ffd600;">FALLBACK SECRET ⚠️</span> (Change before deploy)</p>
+        <br>
+        <a href="/pricing.html" class="pricing-link" target="_blank">📋 View Customer Pricing Page</a>
+    </div>
+</div>
+
+<!-- AUTH -->
+<div class="section" id="auth">
+    <div class="login-form card" id="loginForm">
+        <h2>🔐 Login to Empire</h2>
+        <input type="email" id="loginEmail" placeholder="Email" value="">
+        <input type="password" id="loginPassword" placeholder="Password" value="">
+        <button class="btn" style="width:100%;" onclick="doLogin()">Login</button>
+        <div class="toggle">No account? <span onclick="toggleAuth()">Register</span></div>
+    </div>
+    <div class="login-form card hidden" id="registerForm">
+        <h2>📝 Create Account</h2>
+        <input type="text" id="regName" placeholder="Full Name">
+        <input type="email" id="regEmail" placeholder="Email">
+        <input type="password" id="regPassword" placeholder="Password">
+        <button class="btn" style="width:100%;" onclick="doRegister()">Register</button>
+        <div class="toggle">Have an account? <span onclick="toggleAuth()">Login</span></div>
+    </div>
+</div>
+
+<!-- BUILD (Make It Real) -->
+<div class="section" id="build">
+    <div class="card">
+        <h2>🏗️ Make It Real — Website Builder</h2>
+        <p style="color:#888;margin-bottom:15px;">Describe your business. Our AI builds a complete website in seconds.</p>
+        <input type="text" id="buildBizName" placeholder="Business Name (e.g. SignSafe Pro)">
+        <input type="text" id="buildBizType" placeholder="Business Type (e.g. Notary Service, Restaurant, etc.)">
+        <input type="text" id="buildCity" placeholder="City (default: North Bay, ON)" value="North Bay, ON">
+        <button class="btn" id="buildBtn" onclick="doBuild()">🚀 Generate Website</button>
+        <div class="result-box" id="buildResult"></div>
+    </div>
+    <div class="card">
+        <h2>📁 Your Builds</h2>
+        <div id="buildsList"><p style="color:#888;">Login to see your builds</p></div>
+    </div>
+</div>
+
+<!-- AI SUITE -->
+<div class="section" id="aisuite">
+    <div class="card">
+        <h2>🤖 AI Suite — 10 Services</h2>
+        <p style="color:#888;margin-bottom:15px;">All powered by Groq AI. Rate-limited to 1500 tokens + 10s delays to stay under free tier.</p>
+        <div class="grid-4" id="aiGrid">
+            <div class="ai-card" onclick="openAI('chatbot')">
+                <div class="icon">💬</div>
+                <h4>Chatbot</h4>
+                <p>AI assistant for your business</p>
+            </div>
+            <div class="ai-card" onclick="openAI('notary')">
+                <div class="icon">📜</div>
+                <h4>Notary</h4>
+                <p>Legal document generator</p>
+            </div>
+            <div class="ai-card" onclick="openAI('marketing')">
+                <div class="icon">📢</div>
+                <h4>Marketing</h4>
+                <p>Social media posts</p>
+            </div>
+            <div class="ai-card" onclick="openAI('coldemail')">
+                <div class="icon">📧</div>
+                <h4>Cold Email</h4>
+                <p>Sales email copy</p>
+            </div>
+            <div class="ai-card" onclick="openAI('phonescript')">
+                <div class="icon">📞</div>
+                <h4>Phone Script</h4>
+                <p>Sales call scripts</p>
+            </div>
+            <div class="ai-card" onclick="openAI('docanalysis')">
+                <div class="icon">📄</div>
+                <h4>Doc Analysis</h4>
+                <p>AI document review</p>
+            </div>
+            <div class="ai-card" onclick="openAI('referral')">
+                <div class="icon">🤝</div>
+                <h4>Referral</h4>
+                <p>Referral email campaigns</p>
+            </div>
+            <div class="ai-card" onclick="openAI('task')">
+                <div class="icon">🎯</div>
+                <h4>AI Task</h4>
+                <p>General AI assistant</p>
+            </div>
+            <div class="ai-card" onclick="openAI('contract')">
+                <div class="icon">⚖️</div>
+                <h4>Contract</h4>
+                <p>Legal contract drafts</p>
+            </div>
+            <div class="ai-card" onclick="openAI('invoice')">
+                <div class="icon">💰</div>
+                <h4>Invoice</h4>
+                <p>Professional invoices</p>
+            </div>
+        </div>
+    </div>
+    <div class="card hidden" id="aiFormCard">
+        <h2 id="aiFormTitle">AI Service</h2>
+        <div id="aiFormFields"></div>
+        <button class="btn" id="aiSubmitBtn" onclick="submitAI()">Generate</button>
+        <div class="result-box" id="aiResult"></div>
+    </div>
+</div>
+
+<!-- JOBS -->
+<div class="section" id="jobs">
+    <div class="card">
+        <h2>📋 Job Queue</h2>
+        <input type="text" id="jobTitle" placeholder="Job Title">
+        <input type="text" id="jobClient" placeholder="Client Name">
+        <textarea id="jobDesc" rows="3" placeholder="Job Description"></textarea>
+        <button class="btn" onclick="createJob()">➕ Add Job</button>
+    </div>
+    <div class="card">
+        <h2>📁 Active Jobs</h2>
+        <div id="jobsList"><p style="color:#888;">Login to manage jobs</p></div>
+    </div>
+</div>
+
+<!-- EMAIL -->
+<div class="section" id="email">
+    <div class="card">
+        <h2>📧 Email Center</h2>
+        <p style="color:#888;margin-bottom:15px;">Send emails to clients. (Currently in fallback mode — emails log to console)</p>
+        <input type="email" id="emailTo" placeholder="To: client@email.com">
+        <input type="text" id="emailSubject" placeholder="Subject">
+        <textarea id="emailBody" rows="6" placeholder="Email body..."></textarea>
+        <button class="btn" onclick="sendEmail()">📤 Send Email</button>
+        <div class="result-box" id="emailResult"></div>
+    </div>
+</div>
+
+</div>
+
+<script>
+const API = 'http://localhost:8081';
+let token = localStorage.getItem('liljr_token') || '';
+let user = JSON.parse(localStorage.getItem('liljr_user') || 'null');
+let currentAIService = '';
+
+// Init
+if (token) {
+    updateAuthUI();
+    loadBuilds();
+    loadJobs();
+}
+
+function showSection(id) {
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
+    event.target.classList.add('active');
+}
+
+function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.style.display = 'block';
+    setTimeout(() => t.style.display = 'none', 3000);
+}
+
+// Auth
+function toggleAuth() {
+    document.getElementById('loginForm').classList.toggle('hidden');
+    document.getElementById('registerForm').classList.toggle('hidden');
+}
+
+async function doLogin() {
+    const email = document.getElementById('loginEmail').value;
+    const password = document.getElementById('loginPassword').value;
+    if (!email || !password) return alert('Fill all fields');
+
+    try {
+        const res = await fetch(`${API}/api/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+        });
+        const data = await res.json();
+        if (data.success) {
+            token = data.token;
+            user = data.user;
+            localStorage.setItem('liljr_token', token);
+            localStorage.setItem('liljr_user', JSON.stringify(user));
+            updateAuthUI();
+            loadBuilds();
+            loadJobs();
+            showToast('Login successful');
+            showSection('dashboard');
+        } else {
+            alert(data.error || 'Login failed');
+        }
+    } catch (e) {
+        alert('Server error: ' + e.message);
+    }
+}
+
+async function doRegister() {
+    const name = document.getElementById('regName').value;
+    const email = document.getElementById('regEmail').value;
+    const password = document.getElementById('regPassword').value;
+    if (!email || !password) return alert('Fill all fields');
+
+    try {
+        const res = await fetch(`${API}/api/auth/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, email, password })
+        });
+        const data = await res.json();
+        if (data.success) {
+            token = data.token;
+            user = data.user;
+            localStorage.setItem('liljr_token', token);
+            localStorage.setItem('liljr_user', JSON.stringify(user));
+            updateAuthUI();
+            showToast('Account created');
+            showSection('dashboard');
+        } else {
+            alert(data.error || 'Registration failed');
+        }
+    } catch (e) {
+        alert('Server error: ' + e.message);
+    }
+}
+
+function updateAuthUI() {
+    const badge = document.getElementById('authStatus');
+    const btn = document.getElementById('authBtn');
+    if (token && user) {
+        badge.textContent = user.email;
+        badge.className = 'status-badge status-green';
+        btn.textContent = 'Account';
+        btn.onclick = () => { if(confirm('Logout?')) { localStorage.clear(); location.reload(); } };
+    }
+}
+
+// Health Check
+async function runHealthCheck() {
+    const box = document.getElementById('healthResult');
+    box.style.display = 'block';
+    box.className = 'result-box loading';
+    box.textContent = 'Checking server health...';
+
+    try {
+        const res = await fetch(`${API}/api/health`);
+        const data = await res.json();
+        box.className = 'result-box';
+        box.textContent = JSON.stringify(data, null, 2);
+    } catch (e) {
+        box.className = 'result-box error';
+        box.textContent = 'Health check failed: ' + e.message;
+    }
+}
+
+// Build
+async function doBuild() {
+    if (!token) return alert('Login first');
+    const name = document.getElementById('buildBizName').value;
+    const type = document.getElementById('buildBizType').value;
+    const city = document.getElementById('buildCity').value;
+    if (!name || !type) return alert('Business name and type required');
+
+    const btn = document.getElementById('buildBtn');
+    const box = document.getElementById('buildResult');
+    btn.disabled = true;
+    box.className = 'result-box loading';
+    box.textContent = 'Building website with AI... (this may take 10-30 seconds)';
+
+    try {
+        const res = await fetch(`${API}/api/build`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ businessName: name, businessType: type, city })
+        });
+        const data = await res.json();
+        if (data.success) {
+            box.className = 'result-box';
+            box.innerHTML = `✅ Website generated!<br><br>Preview: <a href="${API}${data.previewUrl}" target="_blank" style="color:#ff6b00;">${API}${data.previewUrl}</a><br>Build ID: ${data.buildId}`;
+            loadBuilds();
+            showToast('Website built!');
+        } else {
+            box.className = 'result-box error';
+            box.textContent = 'Error: ' + (data.error || 'Unknown error');
+        }
+    } catch (e) {
+        box.className = 'result-box error';
+        box.textContent = 'Error: ' + e.message;
+    }
+    btn.disabled = false;
+}
+
+async function loadBuilds() {
+    if (!token) return;
+    try {
+        const res = await fetch(`${API}/api/builds`, { headers: { 'Authorization': `Bearer ${token}` } });
+        const data = await res.json();
+        const list = document.getElementById('buildsList');
+        if (!data.length) {
+            list.innerHTML = '<p style="color:#888;">No builds yet. Create one above.</p>';
+            return;
+        }
+        list.innerHTML = data.map(b => `
+            <div style="border:1px solid #333;padding:15px;margin-bottom:10px;border-radius:8px;">
+                <strong style="color:#ff6b00;">${b.businessName}</strong> — ${b.businessType}<br>
+                <small style="color:#888;">${b.city} | ${new Date(b.created).toLocaleString()}</small><br>
+                <a href="${API}${b.previewUrl}" target="_blank" style="color:#00c853;">View Website →</a>
+            </div>
+        `).join('');
+        document.getElementById('statBuilds').textContent = data.length;
+    } catch (e) { console.log('Builds load error:', e); }
+}
+
+// AI Suite
+const AI_FORMS = {
+    chatbot: [
+        { id: 'aiMsg', label: 'Message', type: 'text', placeholder: 'Ask anything...' },
+        { id: 'aiBiz', label: 'Business Type', type: 'text', placeholder: 'e.g. Notary Service' }
+    ],
+    notary: [
+        { id: 'aiDocType', label: 'Document Type', type: 'text', placeholder: 'e.g. Affidavit, Contract' },
+        { id: 'aiParties', label: 'Parties', type: 'text', placeholder: 'Party A and Party B' },
+        { id: 'aiDetails', label: 'Details', type: 'textarea', placeholder: 'Terms and conditions...' }
+    ],
+    marketing: [
+        { id: 'aiBizName', label: 'Business Name', type: 'text', placeholder: 'SignSafe Pro' },
+        { id: 'aiPlatform', label: 'Platform', type: 'text', placeholder: 'Instagram, Facebook, LinkedIn' },
+        { id: 'aiOffer', label: 'What are you promoting?', type: 'textarea', placeholder: '50% off first notarization' }
+    ],
+    coldemail: [
+        { id: 'aiTarget', label: 'Target', type: 'text', placeholder: 'Small business owners in North Bay' },
+        { id: 'aiProduct', label: 'Product/Service', type: 'text', placeholder: 'Mobile notary service' },
+        { id: 'aiTone', label: 'Tone', type: 'text', placeholder: 'Professional but friendly' }
+    ],
+    phonescript: [
+        { id: 'aiPurpose', label: 'Call Purpose', type: 'text', placeholder: 'Introduce mobile notary service' },
+        { id: 'aiBizName2', label: 'Business Name', type: 'text', placeholder: 'SignSafe Pro' },
+        { id: 'aiObjection', label: 'Objection to Handle', type: 'text', placeholder: 'Price too high' }
+    ],
+    docanalysis: [
+        { id: 'aiDoc', label: 'Document Text', type: 'textarea', placeholder: 'Paste document text here...', rows: 6 },
+        { id: 'aiQuestion', label: 'Question', type: 'text', placeholder: 'What does this contract say about termination?' }
+    ],
+    referral: [
+        { id: 'aiReferrer', label: 'Referrer Name', type: 'text', placeholder: 'John Smith' },
+        { id: 'aiReferee', label: 'Referee Name', type: 'text', placeholder: 'Their friend' },
+        { id: 'aiIncentive', label: 'Incentive', type: 'text', placeholder: '10% off next service' }
+    ],
+    task: [
+        { id: 'aiTask', label: 'Task', type: 'textarea', placeholder: 'Write a business plan for...', rows: 3 },
+        { id: 'aiContext', label: 'Context', type: 'textarea', placeholder: 'Small business in North Bay, ON', rows: 2 }
+    ],
+    contract: [
+        { id: 'aiContractType', label: 'Contract Type', type: 'text', placeholder: 'Service Agreement' },
+        { id: 'aiClient', label: 'Client Name', type: 'text', placeholder: 'ABC Company' },
+        { id: 'aiTerms', label: 'Terms', type: 'textarea', placeholder: 'Payment net 30, 1-year term...', rows: 3 }
+    ],
+    invoice: [
+        { id: 'aiInvClient', label: 'Client', type: 'text', placeholder: 'ABC Company' },
+        { id: 'aiInvItems', label: 'Items (JSON)', type: 'textarea', placeholder: '[{"desc":"Notarization","qty":1,"rate":150}]', rows: 3 },
+        { id: 'aiInvDue', label: 'Due Date', type: 'text', placeholder: 'Net 30' }
+    ]
+};
+
+function openAI(service) {
+    currentAIService = service;
+    const card = document.getElementById('aiFormCard');
+    const title = document.getElementById('aiFormTitle');
+    const fields = document.getElementById('aiFormFields');
+    const result = document.getElementById('aiResult');
+
+    card.classList.remove('hidden');
+    title.textContent = service.toUpperCase() + ' Generator';
+    result.textContent = '';
+    result.className = 'result-box';
+
+    const form = AI_FORMS[service];
+    fields.innerHTML = form.map(f => {
+        if (f.type === 'textarea') {
+            return `<label style="display:block;color:#888;font-size:12px;margin-bottom:5px;">${f.label}</label><textarea id="${f.id}" rows="${f.rows||3}" placeholder="${f.placeholder}"></textarea>`;
+        }
+        return `<label style="display:block;color:#888;font-size:12px;margin-bottom:5px;">${f.label}</label><input type="${f.type}" id="${f.id}" placeholder="${f.placeholder}">`;
+    }).join('');
+
+    card.scrollIntoView({ behavior: 'smooth' });
+}
+
+async function submitAI() {
+    if (!token) return alert('Login first');
+    const service = currentAIService;
+    const resultBox = document.getElementById('aiResult');
+    const btn = document.getElementById('aiSubmitBtn');
+
+    const form = AI_FORMS[service];
+    const body = {};
+    form.forEach(f => {
+        const el = document.getElementById(f.id);
+        body[f.id.replace('ai', '').replace(/^./, c => c.toLowerCase())] = el ? el.value : '';
+    });
+
+    // Map to API field names
+    const apiBody = {};
+    if (service === 'chatbot') { apiBody.message = body.msg; apiBody.businessType = body.biz; }
+    else if (service === 'notary') { apiBody.docType = body.docType; apiBody.parties = body.parties; apiBody.details = body.details; }
+    else if (service === 'marketing') { apiBody.businessName = body.bizName; apiBody.platform = body.platform; apiBody.offer = body.offer; }
+    else if (service === 'coldemail') { apiBody.target = body.target; apiBody.product = body.product; apiBody.tone = body.tone; }
+    else if (service === 'phonescript') { apiBody.purpose = body.purpose; apiBody.businessName = body.bizName2; apiBody.objection = body.objection; }
+    else if (service === 'docanalysis') { apiBody.document = body.doc; apiBody.question = body.question; }
+    else if (service === 'referral') { apiBody.referrer = body.referrer; apiBody.referee = body.referee; apiBody.incentive = body.incentive; }
+    else if (service === 'task') { apiBody.task = body.task; apiBody.context = body.context; }
+    else if (service === 'contract') { apiBody.type = body.contractType; apiBody.client = body.client; apiBody.terms = body.terms; }
+    else if (service === 'invoice') { apiBody.client = body.invClient; apiBody.items = body.invItems; apiBody.dueDate = body.invDue; }
+
+    btn.disabled = true;
+    resultBox.className = 'result-box loading';
+    resultBox.textContent = 'Generating with AI... (10-30 seconds due to rate limits)';
+
+    try {
+        const res = await fetch(`${API}/api/ai/${service}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify(apiBody)
+        });
+        const data = await res.json();
+
+        if (data.success) {
+            resultBox.className = 'result-box';
+            resultBox.textContent = data.content || data.parsed?.raw || 'Generated successfully';
+            showToast(`${service} generated!`);
+            // Update stat
+            let count = parseInt(document.getElementById('statAI').textContent) || 0;
+            document.getElementById('statAI').textContent = count + 1;
+        } else {
+            resultBox.className = 'result-box error';
+            resultBox.textContent = 'Error: ' + (data.error || 'Generation failed');
+        }
+    } catch (e) {
+        resultBox.className = 'result-box error';
+        resultBox.textContent = 'Error: ' + e.message;
+    }
+    btn.disabled = false;
+}
+
+// Jobs
+async function createJob() {
+    if (!token) return alert('Login first');
+    const title = document.getElementById('jobTitle').value;
+    const client = document.getElementById('jobClient').value;
+    const desc = document.getElementById('jobDesc').value;
+    if (!title) return alert('Title required');
+
+    try {
+        const res = await fetch(`${API}/api/jobs`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ title, client, description: desc })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast('Job created');
+            document.getElementById('jobTitle').value = '';
+            document.getElementById('jobClient').value = '';
+            document.getElementById('jobDesc').value = '';
+            loadJobs();
+        }
+    } catch (e) { alert('Error: ' + e.message); }
+}
+
+async function loadJobs() {
+    if (!token) return;
+    try {
+        const res = await fetch(`${API}/api/jobs`, { headers: { 'Authorization': `Bearer ${token}` } });
+        const data = await res.json();
+        const list = document.getElementById('jobsList');
+        if (!data.length) {
+            list.innerHTML = '<p style="color:#888;">No jobs yet. Create one above.</p>';
+            return;
+        }
+        list.innerHTML = data.map(j => `
+            <div style="border:1px solid #333;padding:15px;margin-bottom:10px;border-radius:8px;">
+                <strong style="color:#ff6b00;">${j.title}</strong> — ${j.client || 'No client'}<br>
+                <small style="color:#888;">${j.status} | ${new Date(j.created).toLocaleString()}</small><br>
+                <p style="color:#ccc;margin-top:5px;">${j.description || ''}</p>
+            </div>
+        `).join('');
+        document.getElementById('statJobs').textContent = data.length;
+    } catch (e) { console.log('Jobs load error:', e); }
+}
+
+// Email
+async function sendEmail() {
+    if (!token) return alert('Login first');
+    const to = document.getElementById('emailTo').value;
+    const subject = document.getElementById('emailSubject').value;
+    const body = document.getElementById('emailBody').value;
+    if (!to || !subject || !body) return alert('Fill all fields');
+
+    const box = document.getElementById('emailResult');
+    box.className = 'result-box loading';
+    box.textContent = 'Sending...';
+
+    try {
+        const res = await fetch(`${API}/api/email/send`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ to, subject, body })
+        });
+        const data = await res.json();
+        box.className = data.success ? 'result-box' : 'result-box error';
+        box.textContent = data.success 
+            ? `✅ ${data.mode}: ${data.message || 'Email sent'}` 
+            : `❌ Error: ${data.error || 'Failed'}`;
+    } catch (e) {
+        box.className = 'result-box error';
+        box.textContent = 'Error: ' + e.message;
+    }
+}
+</script>
+
+</body>
+</html>

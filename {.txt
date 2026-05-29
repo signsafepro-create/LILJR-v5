@@ -1,0 +1,19 @@
+{
+  "name": "omnibrain-empire",
+  "version": "3.1.0",
+  "description": "Lil Jr 2.0 — Autonomous AI Empire Backend",
+  "main": "omnibrain-backend.js",
+  "scripts": {
+    "start": "node omnibrain-backend.js",
+    "dev": "node omnibrain-backend.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "axios": "^1.6.0",
+    "stripe": "^14.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

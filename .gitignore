@@ -1,0 +1,10 @@
+.env
+.env.txt
+ode_modules/
+.DS_Store
+
+.env
+*.md
+
+.env
+*.md

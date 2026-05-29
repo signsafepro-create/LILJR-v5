@@ -1,0 +1,213 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Moriah Presson Nails</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <nav>
+            <ul>
+                <li><a href="#hero">Home</a></li>
+                <li><a href="#services">Services</a></li>
+                <li><a href="#about">About</a></li>
+                <li><a href="#contact">Contact</a></li>
+            </ul>
+        </nav>
+    </header>
+    <section id="hero">
+        <div class="hero-content">
+            <h1>Moriah Presson Nails</h1>
+            <p>Your Premier Nail Destination in North Bay, ON</p>
+            <button>Book an Appointment</button>
+        </div>
+    </section>
+    <section id="services">
+        <h2>Our Services</h2>
+        <div class="services-grid">
+            <div class="service">
+                <h3>Presson Nails</h3>
+                <p>Choose from a variety of designs and styles</p>
+            </div>
+            <div class="service">
+                <h3>Nail Extensions</h3>
+                <p>Add length and drama to your nails</p>
+            </div>
+            <div class="service">
+                <h3>Nail Art</h3>
+                <p>Custom designs to match your unique style</p>
+            </div>
+        </div>
+    </section>
+    <section id="about">
+        <h2>About Us</h2>
+        <p>Moriah Presson Nails is dedicated to providing exceptional service and quality nail care in North Bay, ON. Our team of experienced technicians are committed to making you feel pampered and relaxed in our clean and welcoming environment.</p>
+    </section>
+    <section id="contact">
+        <h2>Get in Touch</h2>
+        <form>
+            <input type="text" placeholder="Name">
+            <input type="email" placeholder="Email">
+            <textarea placeholder="Message"></textarea>
+            <button>Send</button>
+        </form>
+    </section>
+    <footer>
+        <p>&copy; 2023 Moriah Presson Nails. All Rights Reserved.</p>
+        <p>North Bay, ON. Phone: 123-456-7890. Email: [info@moriahpressonnails.com](mailto:info@moriahpressonnails.com)</p>
+    </footer>
+</body>
+</html>
+```
+
+```css
+/* style.css */
+
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f7f7f7;
+    margin: 0;
+}
+
+header {
+    background-color: #333;
+    color: #fff;
+    padding: 1em;
+    text-align: center;
+}
+
+header nav ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+header nav ul li {
+    display: inline-block;
+    margin-right: 20px;
+}
+
+header nav ul li a {
+    color: #fff;
+    text-decoration: none;
+}
+
+header nav ul li a:hover {
+    color: #ccc;
+}
+
+.hero-content {
+    background-image: linear-gradient(to bottom, #fff, #ccc);
+    padding: 6em 0;
+    text-align: center;
+}
+
+.hero-content h1 {
+    font-size: 48px;
+    margin-bottom: 10px;
+}
+
+.hero-content p {
+    font-size: 18px;
+    color: #666;
+    margin-bottom: 20px;
+}
+
+button {
+    background-color: #333;
+    color: #fff;
+    border: none;
+    padding: 10px 20px;
+    font-size: 16px;
+    cursor: pointer;
+}
+
+button:hover {
+    background-color: #555;
+}
+
+#services {
+    padding: 2em;
+}
+
+.services-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+}
+
+.service {
+    background-color: #fff;
+    padding: 1em;
+    border-radius: 10px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+.service h3 {
+    font-size: 18px;
+    margin-bottom: 10px;
+}
+
+.service p {
+    font-size: 16px;
+    color: #666;
+}
+
+#about {
+    padding: 2em;
+}
+
+#about p {
+    font-size: 18px;
+    color: #666;
+}
+
+#contact {
+    padding: 2em;
+}
+
+form {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+input, textarea {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 20px;
+    border: none;
+    border-radius: 10px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+button[type="submit"] {
+    background-color: #333;
+    color: #fff;
+    border: none;
+    padding: 10px 20px;
+    font-size: 16px;
+    cursor: pointer;
+}
+
+button[type="submit"]:hover {
+    background-color: #555;
+}
+
+footer {
+    background-color: #333;
+    color: #fff;
+    padding: 1em;
+    text-align: center;
+    clear: both;
+}
+
+footer p {
+    margin-bottom: 10px;
+}
+```
+
+Note that the CSS is a basic example to get you started. You may need to adjust it to fit your specific design and layout. Additionally, you will need to create a contact form backend to handle form submissions.
