@@ -1,431 +1,262 @@
-ï»¿const express = require('express');
+const express = require('express');
 const cors = require('cors');
-const fs = require('fs');
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
+const { Pool } = require('pg');
+
 const app = express();
-const PORT = process.env.PORT || 8081;
-
 app.use(cors());
-app.use(express.json());
-// SECURITY GATEKEEPER
-const SECRET_KEY = "SIGNSAFE_PRO_KEY_2026"; // Change this to your own private key
-app.use((req, res, next) => {
-    const userKey = req.headers['x-api-key'];
-    if (!userKey || userKey !== SECRET_KEY) {
-        return res.status(403).json({ error: "Access Denied: Invalid or Missing API Key" });
-    }
+app.use(express.json({ limit: '50mb' }));
+
+const PORT = process.env.PORT || 8080;
+const JWT_SECRET = process.env.JWT_SECRET || 'fallback';
+const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
+const DATABASE_URL = process.env.DATABASE_URL || '';
+
+let pool = null;
+let dbConnected = false;
+
+if (DATABASE_URL) {
+  pool = new Pool({
+    connectionString: DATABASE_URL,
+    ssl: { rejectUnauthorized: false },
+    max: 10,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000
+  });
+  pool.on('error', (err) => {
+    console.error('Postgres error:', err.message);
+    dbConnected = false;
+  });
+}
+
+async function initDB() {
+  if (!pool) {
+    console.log('No DATABASE_URL — running in memory mode');
+    return;
+  }
+  try {
+    await pool.query(`CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, email TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, tier TEXT DEFAULT 'free', messages_used INTEGER DEFAULT 0, messages_limit INTEGER DEFAULT 5, created_at TIMESTAMP DEFAULT NOW())`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS messages (id SERIAL PRIMARY KEY, user_id INTEGER, role TEXT, content TEXT, created_at TIMESTAMP DEFAULT NOW())`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS payments (id SERIAL PRIMARY KEY, user_id INTEGER, stripe_session_id TEXT, amount INTEGER, status TEXT DEFAULT 'pending', created_at TIMESTAMP DEFAULT NOW())`);
+    dbConnected = true;
+    console.log('Database initialized');
+  } catch (e) {
+    console.error('DB init error:', e.message);
+  }
+}
+initDB();
+
+function auth(req, res, next) {
+  const header = req.headers.authorization || '';
+  const token = header.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'No token' });
+  try {
+    req.user = jwt.verify(token, JWT_SECRET);
     next();
-});
+  } catch {
+    res.status(401).json({ error: 'Invalid token' });
+  }
+}
 
-
-const money = require('./all-services');
-
-// Audit Logger
-const logAction = (service, data) => {
-    const entry = `[${new Date().toISOString()}] SERVICE: ${service} | DATA: ${JSON.stringify(data)}\n`;
-    fs.appendFileSync('./service-audit.log', entry);
-};
-
-// DAY 1 HARDENED ROUTE: WEBSITE DESIGN
-app.post('/api/website/design', async (req, res) => {
+app.get('/health', async (req, res) => {
+  let dbStatus = 'disconnected';
+  if (pool) {
     try {
-        const { business_type, location, goals } = req.body;
-        
-        // 1. Validation Gate
-        if (!business_type || !location) {
-            return res.status(400).json({ error: "Missing required business parameters" });
-        }
-
-        // 2. Audit Trail
-        logAction('WEBSITE_DESIGN', req.body);
-
-        // 3. Execution
-        const result = await money.designWebsite(business_type, location, goals);
-        res.json({ status: 'success', data: result });
-        
-    } catch (err) {
-        logAction('ERROR_WEBSITE_DESIGN', err.message);
-        res.status(500).json({ error: "System processing fault", details: err.message });
+      await pool.query('SELECT 1');
+      dbStatus = 'connected';
+    } catch {
+      dbStatus = 'error';
     }
+  }
+  res.json({
+    status: 'LIVE',
+    version: '1.0.0',
+    db: dbStatus,
+    groq: GROQ_API_KEY ? 'configured' : 'missing',
+    timestamp: new Date().toISOString()
+  });
 });
 
-// DAY 10 HARDENED ROUTE: DOCUMENT ANALYSIS
-app.post('/api/doc/analyze', async (req, res) => {
+app.get('/', (req, res) => {
+  res.json({ status: 'OMNIBRAIN BRAIN v1.0', version: '1.0.0' });
+});
+
+app.post('/api/auth/register', async (req, res) => {
+  const { email, password } = req.body || {};
+  if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+  const hash = bcrypt.hashSync(password, 10);
+  try {
+    if (pool) {
+      const result = await pool.query('INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email, tier, messages_used, messages_limit, created_at', [email, hash]);
+      const user = result.rows[0];
+      const token = jwt.sign({ id: user.id, email: user.email, tier: user.tier }, JWT_SECRET, { expiresIn: '7d' });
+      res.json({ token, user });
+    } else {
+      const token = jwt.sign({ id: 1, email, tier: 'free' }, JWT_SECRET, { expiresIn: '7d' });
+      res.json({ token, user: { id: 1, email, tier: 'free', messages_used: 0, messages_limit: 5 } });
+    }
+  } catch (e) {
+    if (e.code === '23505') return res.status(409).json({ error: 'Email already exists' });
+    res.status(500).json({ error: 'Registration failed' });
+  }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  const { email, password } = req.body || {};
+  if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+  try {
+    if (pool) {
+      const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+      const user = result.rows[0];
+      if (!user || !bcrypt.compareSync(password, user.password_hash)) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+      const token = jwt.sign({ id: user.id, email: user.email, tier: user.tier }, JWT_SECRET, { expiresIn: '7d' });
+      res.json({ token, user });
+    } else {
+      const token = jwt.sign({ id: 1, email, tier: 'free' }, JWT_SECRET, { expiresIn: '7d' });
+      res.json({ token, user: { id: 1, email, tier: 'free', messages_used: 0, messages_limit: 5 } });
+    }
+  } catch (e) {
+    res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+app.get('/api/auth/me', auth, async (req, res) => {
+  try {
+    if (pool) {
+      const result = await pool.query('SELECT id, email, tier, messages_used, messages_limit, created_at FROM users WHERE id = $1', [req.user.id]);
+      res.json({ user: result.rows[0] || req.user });
+    } else {
+      res.json({ user: req.user });
+    }
+  } catch (e) {
+    res.json({ user: req.user });
+  }
+});
+
+app.post('/api/cognition/think', auth, async (req, res) => {
+  const { input, mode } = req.body || {};
+  if (!input) return res.status(400).json({ error: 'Input required' });
+  
+  try {
+    if (pool && req.user.tier === 'free') {
+      const u = await pool.query('SELECT messages_used, messages_limit FROM users WHERE id = $1', [req.user.id]);
+      const user = u.rows[0];
+      if (user && user.messages_used >= user.messages_limit) {
+        return res.status(402).json({
+          error: 'Daily limit reached',
+          upgrade_url: '/api/payments/checkout',
+          tier: 'free',
+          used: user.messages_used,
+          limit: user.messages_limit
+        });
+      }
+      await pool.query('UPDATE users SET messages_used = messages_used + 1 WHERE id = $1', [req.user.id]);
+    }
+  } catch (e) {
+    console.error('Limit check error:', e.message);
+  }
+
+  try {
+    if (pool) {
+      await pool.query('INSERT INTO messages (user_id, role, content) VALUES ($1, $2, $3)', [req.user.id, 'user', input]);
+    }
+  } catch (e) {
+    console.error('Message save error:', e.message);
+  }
+
+  if (!GROQ_API_KEY) {
+    return res.json({
+      response: 'Groq API key not configured. Add GROQ_API_KEY to environment variables.',
+      mode: mode || 'standard',
+      model: 'none'
+    });
+  }
+
+  try {
+    const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + GROQ_API_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'llama3-70b-8192',
+        messages: [
+          { role: 'system', content: 'You are OMNIBRAIN, an autonomous AI assistant built by Lil Jr. Be helpful, direct, and powerful.' },
+          { role: 'user', content: input }
+        ],
+        temperature: 0.7,
+        max_tokens: 2048
+      })
+    });
+
+    if (!groqRes.ok) {
+      const err = await groqRes.text();
+      console.error('Groq error:', groqRes.status, err);
+      return res.status(502).json({ error: 'AI service error', details: err });
+    }
+
+    const data = await groqRes.json();
+    const reply = data.choices?.[0]?.message?.content || 'No response from AI';
+
     try {
-        const { document_id, analysis_type } = req.body;
-        
-        // 1. Validation Gate
-        if (!document_id || !analysis_type) {
-            return res.status(400).json({ error: "Missing document parameters" });
-        }
-
-        // 2. Audit Trail
-        logAction('DOC_ANALYSIS', { document_id, analysis_type });
-
-        // 3. Execution
-        const result = await money.analyzeDocument(document_id, analysis_type);
-        res.json({ status: 'success', summary: result.summary || 'N/A' });
-        
-    } catch (err) {
-        logAction('ERROR_DOC_ANALYSIS', err.message);
-        res.status(500).json({ error: "Analysis fault", details: err.message });
+      if (pool) {
+        await pool.query('INSERT INTO messages (user_id, role, content) VALUES ($1, $2, $3)', [req.user.id, 'assistant', reply]);
+      }
+    } catch (e) {
+      console.error('AI message save error:', e.message);
     }
+
+    res.json({
+      response: reply,
+      mode: mode || 'standard',
+      model: 'llama3-70b-8192',
+      tokens: data.usage?.total_tokens || 0
+    });
+
+  } catch (e) {
+    console.error('Think error:', e.message);
+    res.status(500).json({ error: 'AI request failed', details: e.message });
+  }
 });
 
-// DAY 10 HARDENED ROUTE: DOCUMENT ANALYSIS
-app.post('/api/doc/analyze', async (req, res) => {
-    try {
-        const { document_id, analysis_type } = req.body;
-        
-        // 1. Validation Gate
-        if (!document_id || !analysis_type) {
-            return res.status(400).json({ error: "Missing document parameters" });
-        }
-
-        // 2. Audit Trail
-        logAction('DOC_ANALYSIS', { document_id, analysis_type });
-
-        // 3. Execution
-        const result = await money.analyzeDocument(document_id, analysis_type);
-        res.json({ status: 'success', summary: result.summary || 'N/A' });
-        
-    } catch (err) {
-        logAction('ERROR_DOC_ANALYSIS', err.message);
-        res.status(500).json({ error: "Analysis fault", details: err.message });
+app.get('/api/cognition/history', auth, async (req, res) => {
+  try {
+    if (pool) {
+      const result = await pool.query('SELECT role, content, created_at FROM messages WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50', [req.user.id]);
+      res.json({ messages: result.rows.reverse() });
+    } else {
+      res.json({ messages: [] });
     }
+  } catch (e) {
+    res.json({ messages: [] });
+  }
 });
 
-// DAY 9 HARDENED ROUTE: COLD SMS SEQUENCE
-app.post('/api/sms/sequence', async (req, res) => {
-    try {
-        const { contact_list, message_body } = req.body;
-        
-        // 1. Validation Gate
-        if (!contact_list || !message_body) {
-            return res.status(400).json({ error: "Missing SMS parameters" });
-        }
-
-        // 2. Audit Trail
-        logAction('SMS_SEQUENCE', req.body);
-
-        // 3. Execution
-        const result = await money.generateSMSSequence(contact_list, message_body);
-        res.json({ status: 'success', sms_id: result.id || 'N/A' });
-        
-    } catch (err) {
-        logAction('ERROR_SMS_SEQUENCE', err.message);
-        res.status(500).json({ error: "SMS generation fault", details: err.message });
+app.get('/api/stats', async (req, res) => {
+  try {
+    if (pool && dbConnected) {
+      const users = await pool.query('SELECT COUNT(*) FROM users');
+      const messages = await pool.query('SELECT COUNT(*) FROM messages');
+      res.json({
+        users: parseInt(users.rows[0].count),
+        messages: parseInt(messages.rows[0].count),
+        version: '1.0.0',
+        status: 'LIVE'
+      });
+    } else {
+      res.json({ users: 0, messages: 0, version: '1.0.0', status: 'LIVE (memory mode)' });
     }
+  } catch (e) {
+    res.json({ users: 0, messages: 0, version: '1.0.0', status: 'LIVE' });
+  }
 });
 
-// DAY 8 HARDENED ROUTE: COLD EMAIL SEQUENCE
-app.post('/api/email/sequence', async (req, res) => {
-    try {
-        const { audience_segment, campaign_goal } = req.body;
-        
-        // 1. Validation Gate
-        if (!audience_segment || !campaign_goal) {
-            return res.status(400).json({ error: "Missing campaign parameters" });
-        }
-
-        // 2. Audit Trail
-        logAction('EMAIL_SEQUENCE', req.body);
-
-        // 3. Execution
-        const result = await money.generateEmailSequence(audience_segment, campaign_goal);
-        res.json({ status: 'success', sequence_id: result.id || 'N/A' });
-        
-    } catch (err) {
-        logAction('ERROR_EMAIL_SEQUENCE', err.message);
-        res.status(500).json({ error: "Sequence generation fault", details: err.message });
-    }
+app.listen(PORT, () => {
+  console.log('OMNIBRAIN BRAIN v1.0 running on port ' + PORT);
+  console.log('DB:', dbConnected ? 'connected' : (pool ? 'connecting...' : 'memory mode'));
+  console.log('Groq:', GROQ_API_KEY ? 'ready' : 'MISSING — add GROQ_API_KEY');
 });
-
-// DAY 7 HARDENED ROUTE: LEAD GENERATION
-app.post('/api/leadgen/build', async (req, res) => {
-    try {
-        const { industry, target_region, filters } = req.body;
-        
-        // 1. Validation Gate
-        if (!industry || !target_region) {
-            return res.status(400).json({ error: "Missing lead generation criteria" });
-        }
-
-        // 2. Audit Trail
-        logAction('LEADGEN_BUILD', req.body);
-
-        // 3. Execution
-        const result = await money.buildLeadGen(industry, target_region, filters);
-        res.json({ status: 'success', leads_found: result.count || 0 });
-        
-    } catch (err) {
-        logAction('ERROR_LEADGEN_BUILD', err.message);
-        res.status(500).json({ error: "Lead generation fault", details: err.message });
-    }
-});
-
-// DAY 6 HARDENED ROUTE: CONTENT CALENDAR
-app.post('/api/calendar/generate', async (req, res) => {
-    try {
-        const { start_date, duration_days, focus_topic } = req.body;
-        
-        // 1. Validation Gate
-        if (!start_date || !duration_days) {
-            return res.status(400).json({ error: "Missing scheduling parameters" });
-        }
-
-        // 2. Audit Trail
-        logAction('CALENDAR_GEN', req.body);
-
-        // 3. Execution
-        const result = await money.generateCalendar(start_date, duration_days, focus_topic);
-        res.json({ status: 'success', calendar_id: result.id || 'NEW_CAL' });
-        
-    } catch (err) {
-        logAction('ERROR_CALENDAR_GEN', err.message);
-        res.status(500).json({ error: "Scheduling fault", details: err.message });
-    }
-});
-
-// DAY 10 HARDENED ROUTE: DOCUMENT ANALYSIS
-app.post('/api/doc/analyze', async (req, res) => {
-    try {
-        const { document_id, analysis_type } = req.body;
-        
-        // 1. Validation Gate
-        if (!document_id || !analysis_type) {
-            return res.status(400).json({ error: "Missing document parameters" });
-        }
-
-        // 2. Audit Trail
-        logAction('DOC_ANALYSIS', { document_id, analysis_type });
-
-        // 3. Execution
-        const result = await money.analyzeDocument(document_id, analysis_type);
-        res.json({ status: 'success', summary: result.summary || 'N/A' });
-        
-    } catch (err) {
-        logAction('ERROR_DOC_ANALYSIS', err.message);
-        res.status(500).json({ error: "Analysis fault", details: err.message });
-    }
-});
-
-// DAY 10 HARDENED ROUTE: DOCUMENT ANALYSIS
-app.post('/api/doc/analyze', async (req, res) => {
-    try {
-        const { document_id, analysis_type } = req.body;
-        
-        // 1. Validation Gate
-        if (!document_id || !analysis_type) {
-            return res.status(400).json({ error: "Missing document parameters" });
-        }
-
-        // 2. Audit Trail
-        logAction('DOC_ANALYSIS', { document_id, analysis_type });
-
-        // 3. Execution
-        const result = await money.analyzeDocument(document_id, analysis_type);
-        res.json({ status: 'success', summary: result.summary || 'N/A' });
-        
-    } catch (err) {
-        logAction('ERROR_DOC_ANALYSIS', err.message);
-        res.status(500).json({ error: "Analysis fault", details: err.message });
-    }
-});
-
-// DAY 9 HARDENED ROUTE: COLD SMS SEQUENCE
-app.post('/api/sms/sequence', async (req, res) => {
-    try {
-        const { contact_list, message_body } = req.body;
-        
-        // 1. Validation Gate
-        if (!contact_list || !message_body) {
-            return res.status(400).json({ error: "Missing SMS parameters" });
-        }
-
-        // 2. Audit Trail
-        logAction('SMS_SEQUENCE', req.body);
-
-        // 3. Execution
-        const result = await money.generateSMSSequence(contact_list, message_body);
-        res.json({ status: 'success', sms_id: result.id || 'N/A' });
-        
-    } catch (err) {
-        logAction('ERROR_SMS_SEQUENCE', err.message);
-        res.status(500).json({ error: "SMS generation fault", details: err.message });
-    }
-});
-
-// DAY 8 HARDENED ROUTE: COLD EMAIL SEQUENCE
-app.post('/api/email/sequence', async (req, res) => {
-    try {
-        const { audience_segment, campaign_goal } = req.body;
-        
-        // 1. Validation Gate
-        if (!audience_segment || !campaign_goal) {
-            return res.status(400).json({ error: "Missing campaign parameters" });
-        }
-
-        // 2. Audit Trail
-        logAction('EMAIL_SEQUENCE', req.body);
-
-        // 3. Execution
-        const result = await money.generateEmailSequence(audience_segment, campaign_goal);
-        res.json({ status: 'success', sequence_id: result.id || 'N/A' });
-        
-    } catch (err) {
-        logAction('ERROR_EMAIL_SEQUENCE', err.message);
-        res.status(500).json({ error: "Sequence generation fault", details: err.message });
-    }
-});
-
-// DAY 7 HARDENED ROUTE: LEAD GENERATION
-app.post('/api/leadgen/build', async (req, res) => {
-    try {
-        const { industry, target_region, filters } = req.body;
-        
-        // 1. Validation Gate
-        if (!industry || !target_region) {
-            return res.status(400).json({ error: "Missing lead generation criteria" });
-        }
-
-        // 2. Audit Trail
-        logAction('LEADGEN_BUILD', req.body);
-
-        // 3. Execution
-        const result = await money.buildLeadGen(industry, target_region, filters);
-        res.json({ status: 'success', leads_found: result.count || 0 });
-        
-    } catch (err) {
-        logAction('ERROR_LEADGEN_BUILD', err.message);
-        res.status(500).json({ error: "Lead generation fault", details: err.message });
-    }
-});
-
-// DAY 6 HARDENED ROUTE: CONTENT CALENDAR
-app.post('/api/calendar/generate', async (req, res) => {
-    try {
-        const { start_date, duration_days, focus_topic } = req.body;
-        
-        // 1. Validation Gate
-        if (!start_date || !duration_days) {
-            return res.status(400).json({ error: "Missing scheduling parameters" });
-        }
-
-        // 2. Audit Trail
-        logAction('CALENDAR_GEN', req.body);
-
-        // 3. Execution
-        const result = await money.generateCalendar(start_date, duration_days, focus_topic);
-        res.json({ status: 'success', calendar_id: result.id || 'NEW_CAL' });
-        
-    } catch (err) {
-        logAction('ERROR_CALENDAR_GEN', err.message);
-        res.status(500).json({ error: "Scheduling fault", details: err.message });
-    }
-});
-
-// DAY 5 HARDENED ROUTE: CONTENT POSTING
-app.post('/api/social/post', async (req, res) => {
-    try {
-        const { campaign_id, scheduled_time } = req.body;
-        
-        // 1. Validation Gate
-        if (!campaign_id) {
-            return res.status(400).json({ error: "Missing campaign reference" });
-        }
-
-        // 2. Audit Trail
-        logAction('CONTENT_POSTING', req.body);
-
-        // 3. Execution
-        const result = await money.postContent(campaign_id, scheduled_time);
-        res.json({ status: 'success', post_id: result.post_id || 'QUEUED' });
-        
-    } catch (err) {
-        logAction('ERROR_CONTENT_POSTING', err.message);
-        res.status(500).json({ error: "Posting fault", details: err.message });
-    }
-});
-
-// DAY 4 HARDENED ROUTE: SOCIAL MEDIA BUILD
-app.post('/api/social/build', async (req, res) => {
-    try {
-        const { platform, content_topic, frequency } = req.body;
-        
-        // 1. Validation Gate
-        if (!platform || !content_topic) {
-            return res.status(400).json({ error: "Missing required social media parameters" });
-        }
-
-        // 2. Audit Trail
-        logAction('SOCIAL_MEDIA_BUILD', req.body);
-
-        // 3. Execution
-        const result = await money.buildSocialMedia(req.body);
-        res.json({ status: 'success', campaign_id: result.campaign_id || 'N/A' });
-        
-    } catch (err) {
-        logAction('ERROR_SOCIAL_MEDIA_BUILD', err.message);
-        res.status(500).json({ error: "System processing fault", details: err.message });
-    }
-});
-
-// DAY 3 HARDENED ROUTE: CHATBOT BUILD
-app.post('/api/chatbot/build', async (req, res) => {
-    try {
-        const { bot_name, industry, persona } = req.body;
-        
-        // 1. Validation Gate
-        if (!bot_name || !industry) {
-            return res.status(400).json({ error: "Missing required chatbot parameters" });
-        }
-
-        // 2. Audit Trail
-        logAction('CHATBOT_BUILD', req.body);
-
-        // 3. Execution
-        const result = await money.buildChatbot(req.body);
-        res.json({ status: 'success', bot_id: result.id || 'N/A' });
-        
-    } catch (err) {
-        logAction('ERROR_CHATBOT_BUILD', err.message);
-        res.status(500).json({ error: "System processing fault", details: err.message });
-    }
-});
-
-// DAY 2 HARDENED ROUTE: LANDING PAGE GENERATION
-app.post('/api/landing-page/generate', async (req, res) => {
-    try {
-        const { target_audience, offer_details } = req.body;
-        
-        // 1. Validation Gate
-        if (!target_audience || !offer_details) {
-            return res.status(400).json({ error: "Missing required landing page parameters" });
-        }
-
-        // 2. Audit Trail
-        logAction('LANDING_PAGE_GEN', req.body);
-
-        // 3. Execution (Assuming the function exists in all-services.js)
-        const result = await money.generateLandingPage(target_audience, offer_details);
-        res.json({ status: 'success', data: result });
-        
-    } catch (err) {
-        logAction('ERROR_LANDING_PAGE_GEN', err.message);
-        res.status(500).json({ error: "System processing fault", details: err.message });
-    }
-});
-
-app.listen(PORT, () => console.log('ðŸš€ SIGNSAFE PRO V5: DAY 1 HARDENED'));
-
-
-
-
-
-
-
-
-
-
-
-
