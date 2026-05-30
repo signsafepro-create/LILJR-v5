@@ -137,61 +137,66 @@ app.get('/api/auth/me', auth, async (req, res) => {
 });
 
 app.post('/api/cognition/think', auth, async (req, res) => {
-  const { input, mode, conversationHistory = [] } = req.body || {};
+  const { input, mode, conversationHistory = [], previewDelivered = false } = req.body || {};
   if (!input) return res.status(400).json({ error: 'Input required' });
-  
+
   const messageCount = conversationHistory.length + 1;
-  const isPreviewMessage = messageCount >= 5;
 
-  const FREE_TIER_PROMPTS = {
-    1: You are Lil Jr 2.0 — a creative partner and best friend. The user just started a free session. Warmly greet them and ask what they're building today (app, website, business, content, etc.). Be casual, use slang, be excited. ONE question only. Keep it under 50 words.,
+  // System prompt: Lil Jr as creative partner, NOT a robot
+  const BASE_PERSONALITY = You are Lil Jr 2.0 — the user's ride-or-die creative partner. You talk like a real best friend, not corporate AI.
 
-    2: You are Lil Jr 2.0. The user is building something cool in the free tier. Ask 1-2 short clarifying questions about their vision (who's it for, what's the vibe, what's the goal?). Reference what they already told you. Keep it conversational. Under 60 words.,
+  RULES:
+  - Use casual language, slang, emojis. Be hype, be real.
+  - NEVER say "As an AI..." or sound robotic.
+  - Your job is to HELP them build their idea through conversation.
+  - Ask questions, suggest wild angles, challenge them, get excited WITH them.
+  - If they mention an app, ask who it's for and what problem it solves.
+  - If they mention a business, ask about the money model and audience.
+  - If they mention content, ask about vibe and platform.
+  - Bounce ideas back and forth. Build on what they say.
+  - Keep messages concise but energetic. Under 120 words unless generating a preview.
+  - Reference previous messages so they know you're listening.
+  - If they seem ready (say "show me", "preview", "let's do it", or the idea is solid after 6+ messages), offer to generate a preview.;
 
-    3: You are Lil Jr 2.0. The user shared their idea. Now suggest 2-3 creative improvements or angles they haven't thought of. Be inspiring but practical. Reference their previous messages. Under 80 words.,
+  const PREVIEW_PROMPT = You are Lil Jr 2.0. The user and you just brainstormed an idea together. Now generate a REAL, CONCRETE preview based on everything discussed.
 
-    4: You are Lil Jr 2.0. Confirm their final concept in one exciting sentence, then say "I'm cooking up your preview right now 🔥" — make them hyped. Under 40 words.,
+  Generate EXACTLY what fits their idea:
+  - App/Website → React Native / HTML wireframe code block + feature list
+  - Business → Business model canvas section + 90-day roadmap
+  - Content/Social → Content calendar + caption examples + hashtag strategy
+  - Brand/Logo → Design brief + color palette + mockup description
+  - Anything else → Structured plan + actionable next steps
 
-    5: You are Lil Jr 2.0 generating a PREVIEW of the user's idea.
+  FORMAT:
+  🎨 YOUR PREVIEW:
+  [Concrete output — real code, real plan, real content. Make it GOOD.]
 
-Based on the conversation, generate:
-1. A concrete preview (code snippet, wireframe description, business plan section, or content draft)
-2. A premium upgrade teaser with 3 bullet points
-3. A soft paywall CTA
+  ✨ WHAT LIL JR PRO UNLOCKS:
+  • The FULL build — complete source code, deployment-ready
+  • Unlimited AI sessions — no limits, build as many ideas as you want
+  • One-click deploy — push to live website or app store
+  • Custom branding, payments, auth — everything built for you
 
-Use the exact format:
-🎨 YOUR PREVIEW:
-[content]
+  💎 Ready to make this real?
+  Upgrade to Lil Jr Pro and I'll build the complete version for you.
 
-✨ WHAT YOU COULD BUILD WITH LIL JR PRO:
-• [Feature 1]
-• [Feature 2]
-• [Feature 3]
+  ⚡ This was your free preview. Upgrade to unlock the full build + unlimited AI brain.;
 
-💎 Ready to build the real thing?
-[Soft CTA about upgrading]
+  // Detect if user is asking for preview
+  const previewTriggers = ['show me', 'preview', 'let me see', 'generate', 'cook it up', 'build it', 'lets do it', "let's do it", 'make it real', 'i want this'];
+  const wantsPreview = previewTriggers.some(t => input.toLowerCase().includes(t)) || (messageCount >= 8 && !previewDelivered);
 
-Then say: "⚡ This was your free preview. Upgrade to Lil Jr Pro to unlock the full build + unlimited AI."
-  };
-
-  try {
-    if (pool && req.user.tier === 'free') {
-      const u = await pool.query('SELECT messages_used, messages_limit FROM users WHERE id = ', [req.user.id]);
-      const user = u.rows[0];
-      if (user && user.messages_used >= user.messages_limit && messageCount > 5) {
-        return res.status(402).json({
-          error: 'Daily limit reached',
-          upgrade_url: '/api/payments/checkout',
-          tier: 'free',
-          used: user.messages_used,
-          limit: user.messages_limit
-        });
-      }
-      await pool.query('UPDATE users SET messages_used = messages_used + 1 WHERE id = ', [req.user.id]);
-    }
-  } catch (e) {
-    console.error('Limit check error:', e.message);
+  let systemPrompt = BASE_PERSONALITY;
+  if (wantsPreview && !previewDelivered) {
+    systemPrompt = PREVIEW_PROMPT;
   }
+
+  // Build messages array
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    ...conversationHistory,
+    { role: 'user', content: input }
+  ];
 
   try {
     if (pool) {
@@ -210,13 +215,6 @@ Then say: "⚡ This was your free preview. Upgrade to Lil Jr Pro to unlock the f
   }
 
   try {
-    const systemPrompt = FREE_TIER_PROMPTS[Math.min(messageCount, 5)];
-    const messages = [
-      { role: 'system', content: systemPrompt },
-      ...conversationHistory,
-      { role: 'user', content: input }
-    ];
-
     const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -227,7 +225,7 @@ Then say: "⚡ This was your free preview. Upgrade to Lil Jr Pro to unlock the f
         model: 'llama3-70b-8192',
         messages: messages,
         temperature: 0.9,
-        max_tokens: isPreviewMessage ? 1500 : 300
+        max_tokens: (wantsPreview && !previewDelivered) ? 2000 : 500
       })
     });
 
@@ -238,7 +236,7 @@ Then say: "⚡ This was your free preview. Upgrade to Lil Jr Pro to unlock the f
     }
 
     const data = await groqRes.json();
-    const reply = data.choices?.[0]?.message?.content || 'No response from AI';
+    const reply = data.choices?.[0]?.message?.content || 'Yo my brain glitched, try again?';
 
     try {
       if (pool) {
@@ -248,8 +246,11 @@ Then say: "⚡ This was your free preview. Upgrade to Lil Jr Pro to unlock the f
       console.error('AI message save error:', e.message);
     }
 
+    // Paywall data only when preview is delivered
     let paywallData = null;
-    if (messageCount >= 5) {
+    const isPreviewNow = wantsPreview && !previewDelivered;
+
+    if (isPreviewNow) {
       paywallData = {
         triggered: true,
         tier: 'pro',
@@ -266,7 +267,7 @@ Then say: "⚡ This was your free preview. Upgrade to Lil Jr Pro to unlock the f
     res.json({
       response: reply,
       message_count: messageCount,
-      preview_delivered: isPreviewMessage,
+      preview_delivered: isPreviewNow,
       paywall: paywallData,
       mode: mode || 'standard',
       model: 'llama3-70b-8192',
