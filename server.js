@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
@@ -32,7 +32,7 @@ if (DATABASE_URL) {
 
 async function initDB() {
   if (!pool) {
-    console.log('No DATABASE_URL � running in memory mode');
+    console.log('No DATABASE_URL — running in memory mode');
     return;
   }
   try {
@@ -137,14 +137,48 @@ app.get('/api/auth/me', auth, async (req, res) => {
 });
 
 app.post('/api/cognition/think', auth, async (req, res) => {
-  const { input, mode } = req.body || {};
+  const { input, mode, conversationHistory = [] } = req.body || {};
   if (!input) return res.status(400).json({ error: 'Input required' });
   
+  const messageCount = conversationHistory.length + 1;
+  const isPreviewMessage = messageCount >= 5;
+
+  const FREE_TIER_PROMPTS = {
+    1: You are Lil Jr 2.0 — a creative partner and best friend. The user just started a free session. Warmly greet them and ask what they're building today (app, website, business, content, etc.). Be casual, use slang, be excited. ONE question only. Keep it under 50 words.,
+
+    2: You are Lil Jr 2.0. The user is building something cool in the free tier. Ask 1-2 short clarifying questions about their vision (who's it for, what's the vibe, what's the goal?). Reference what they already told you. Keep it conversational. Under 60 words.,
+
+    3: You are Lil Jr 2.0. The user shared their idea. Now suggest 2-3 creative improvements or angles they haven't thought of. Be inspiring but practical. Reference their previous messages. Under 80 words.,
+
+    4: You are Lil Jr 2.0. Confirm their final concept in one exciting sentence, then say "I'm cooking up your preview right now 🔥" — make them hyped. Under 40 words.,
+
+    5: You are Lil Jr 2.0 generating a PREVIEW of the user's idea.
+
+Based on the conversation, generate:
+1. A concrete preview (code snippet, wireframe description, business plan section, or content draft)
+2. A premium upgrade teaser with 3 bullet points
+3. A soft paywall CTA
+
+Use the exact format:
+🎨 YOUR PREVIEW:
+[content]
+
+✨ WHAT YOU COULD BUILD WITH LIL JR PRO:
+• [Feature 1]
+• [Feature 2]
+• [Feature 3]
+
+💎 Ready to build the real thing?
+[Soft CTA about upgrading]
+
+Then say: "⚡ This was your free preview. Upgrade to Lil Jr Pro to unlock the full build + unlimited AI."
+  };
+
   try {
     if (pool && req.user.tier === 'free') {
-      const u = await pool.query('SELECT messages_used, messages_limit FROM users WHERE id = $1', [req.user.id]);
+      const u = await pool.query('SELECT messages_used, messages_limit FROM users WHERE id = ', [req.user.id]);
       const user = u.rows[0];
-      if (user && user.messages_used >= user.messages_limit) {
+      if (user && user.messages_used >= user.messages_limit && messageCount > 5) {
         return res.status(402).json({
           error: 'Daily limit reached',
           upgrade_url: '/api/payments/checkout',
@@ -153,7 +187,7 @@ app.post('/api/cognition/think', auth, async (req, res) => {
           limit: user.messages_limit
         });
       }
-      await pool.query('UPDATE users SET messages_used = messages_used + 1 WHERE id = $1', [req.user.id]);
+      await pool.query('UPDATE users SET messages_used = messages_used + 1 WHERE id = ', [req.user.id]);
     }
   } catch (e) {
     console.error('Limit check error:', e.message);
@@ -161,7 +195,7 @@ app.post('/api/cognition/think', auth, async (req, res) => {
 
   try {
     if (pool) {
-      await pool.query('INSERT INTO messages (user_id, role, content) VALUES ($1, $2, $3)', [req.user.id, 'user', input]);
+      await pool.query('INSERT INTO messages (user_id, role, content) VALUES (, , )', [req.user.id, 'user', input]);
     }
   } catch (e) {
     console.error('Message save error:', e.message);
@@ -176,6 +210,13 @@ app.post('/api/cognition/think', auth, async (req, res) => {
   }
 
   try {
+    const systemPrompt = FREE_TIER_PROMPTS[Math.min(messageCount, 5)];
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      ...conversationHistory,
+      { role: 'user', content: input }
+    ];
+
     const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -184,12 +225,9 @@ app.post('/api/cognition/think', auth, async (req, res) => {
       },
       body: JSON.stringify({
         model: 'llama3-70b-8192',
-        messages: [
-          { role: 'system', content: 'You are OMNIBRAIN, an autonomous AI assistant built by Lil Jr. Be helpful, direct, and powerful.' },
-          { role: 'user', content: input }
-        ],
-        temperature: 0.7,
-        max_tokens: 2048
+        messages: messages,
+        temperature: 0.9,
+        max_tokens: isPreviewMessage ? 1500 : 300
       })
     });
 
@@ -204,17 +242,36 @@ app.post('/api/cognition/think', auth, async (req, res) => {
 
     try {
       if (pool) {
-        await pool.query('INSERT INTO messages (user_id, role, content) VALUES ($1, $2, $3)', [req.user.id, 'assistant', reply]);
+        await pool.query('INSERT INTO messages (user_id, role, content) VALUES (, , )', [req.user.id, 'assistant', reply]);
       }
     } catch (e) {
       console.error('AI message save error:', e.message);
     }
 
+    let paywallData = null;
+    if (messageCount >= 5) {
+      paywallData = {
+        triggered: true,
+        tier: 'pro',
+        upgrade_url: '/api/payments/checkout',
+        features: [
+          '🔥 Unlimited AI brainstorming & building',
+          '🚀 Full code export + one-click deployment',
+          '💎 Custom builds & priority support'
+        ],
+        price: '.99/month'
+      };
+    }
+
     res.json({
       response: reply,
+      message_count: messageCount,
+      preview_delivered: isPreviewMessage,
+      paywall: paywallData,
       mode: mode || 'standard',
       model: 'llama3-70b-8192',
-      tokens: data.usage?.total_tokens || 0
+      tokens: data.usage?.total_tokens || 0,
+      tier: req.user.tier || 'free'
     });
 
   } catch (e) {
@@ -222,7 +279,6 @@ app.post('/api/cognition/think', auth, async (req, res) => {
     res.status(500).json({ error: 'AI request failed', details: e.message });
   }
 });
-
 app.get('/api/cognition/history', auth, async (req, res) => {
   try {
     if (pool) {
@@ -258,5 +314,5 @@ app.get('/api/stats', async (req, res) => {
 app.listen(PORT, () => {
   console.log('OMNIBRAIN BRAIN v1.0 running on port ' + PORT);
   console.log('DB:', dbConnected ? 'connected' : (pool ? 'connecting...' : 'memory mode'));
-  console.log('Groq:', GROQ_API_KEY ? 'ready' : 'MISSING � add GROQ_API_KEY');
+  console.log('Groq:', GROQ_API_KEY ? 'ready' : 'MISSING — add GROQ_API_KEY');
 });
